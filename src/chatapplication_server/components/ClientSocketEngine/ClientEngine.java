@@ -161,17 +161,21 @@ public class ClientEngine extends GenericThreadedComponent
     /**
     Function for hashing the message
      */
-    public static SecretKey generateKey()throws GeneralSecurityException {
-        KeyGenerator keyGenerator = KeyGenerator.getInstance("HmacSHA512","BCFIPS");
-        keyGenerator.init(256);return keyGenerator.generateKey();
-    }
-
     public static byte[] calculateHmac(SecretKey key, byte[] data)throws GeneralSecurityException{
         Mac hmac = Mac.getInstance("HMacSHA512");
         hmac.init(key);
         return hmac.doFinal(data);
     }
 
+    /**
+     * Function for apppending hash
+     */
+    public String appendHashToMsg (byte[] msgCipher, SecretKeySpec serverKey) throws GeneralSecurityException {
+        byte[] hash = calculateHmac(serverKey, msgCipher);
+        String msgCipherHash = byteArrayToHex(hash);
+        String msgCipherHex = byteArrayToHex(msgCipher);
+        return msgCipherHex+msgCipherHash;
+    }
     /**
      * Method for sending a message to the server
      * 
@@ -191,10 +195,7 @@ public class ClientEngine extends GenericThreadedComponent
             byte[] msgBytes = convertToBytes(msg);
             byte[] msgCipher = cipher.doFinal(msgBytes);
 
-            String msgCipherHash = byteArrayToHex(calculateHmac(SERVER_KEY, msgCipher));
-            System.out.println("msgCipherHash: " + msgCipherHash);
-            String msgCipherHex = byteArrayToHex(msgCipher);
-            socketWriter.writeObject(msgCipherHex+msgCipherHash);
+            socketWriter.writeObject(appendHashToMsg(msgCipher, SERVER_KEY));
         }
         catch( IOException e ) 
         {

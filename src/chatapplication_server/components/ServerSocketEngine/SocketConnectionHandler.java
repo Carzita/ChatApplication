@@ -327,6 +327,18 @@ public class SocketConnectionHandler implements Runnable
     }
 
     /**
+     * Verify dwahioaw
+     */
+
+    public boolean verify (String hashPart, String msgPart, SecretKeySpec serverKey) throws GeneralSecurityException {
+        byte[] msgBytes = hexToByteArray(msgPart);
+        byte[] newHash = calculateHmac(serverKey, msgBytes);
+        byte[] oldHash = hexToByteArray(hashPart);
+
+        return Arrays.equals(newHash, oldHash);
+    }
+
+    /**
      * Method for handling any data transmission/reception of the assigned socket connection. The SocketConnectionHandler retrieves
      * the stream sent by the client. Whenever,
      * the stream is empty (client doesn't send anything), the SocketConnectionHandler remains idle and goes back to business
@@ -341,31 +353,26 @@ public class SocketConnectionHandler implements Runnable
             {  
                 /** Wait until there is something in the stream to be read... */
 
-                String test = (String) socketReader.readObject();
+                String receivedMessage = (String) socketReader.readObject();
                 Security.addProvider(new BouncyCastleProvider());
                 byte[] sBytes = new byte[]{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
                 final SecretKeySpec SERVER_KEY = new SecretKeySpec(sBytes, "RawBytes");
 
-                System.out.println("test print: " + test);
-
-                String hashPart = test.substring(test.length() - 128);
-                String msgPart = test.substring(0, test.length() - 128);
-
                 try {
                     Cipher cipher = Cipher.getInstance("AES");
                     cipher.init(Cipher.DECRYPT_MODE, SERVER_KEY);
-                    byte[] msgBytes = hexToByteArray(msgPart);
+                    String hashPart = receivedMessage.substring(receivedMessage.length() - 128);
+                    String msgPart = receivedMessage.substring(0, receivedMessage.length() - 128);
 
-                    byte[] newHash = calculateHmac(SERVER_KEY, msgBytes);
-                    byte[] oldHash = hexToByteArray(hashPart);
+                    if(verify(hashPart, msgPart, SERVER_KEY)) {
 
-                    System.out.println("old hash: " + Arrays.toString(oldHash));
-                    System.out.println("new hash: " + Arrays.toString(newHash));
-
-                    System.out.println("old hash = new hash: " + Arrays.equals(newHash, oldHash));
-
-                    byte[] msgCipher = cipher.doFinal(msgBytes);
-                    cm = (ChatMessage) convertFromBytes(msgCipher);
+                        byte[] msgBytes = hexToByteArray(msgPart);
+                        byte[] msgCipher = cipher.doFinal(msgBytes);
+                        cm = (ChatMessage) convertFromBytes(msgCipher);
+                    }
+                    else {
+                        throw new Exception("Message cannot be verified");
+                    }
 
                 } catch (NoSuchAlgorithmException e) {
                     e.printStackTrace();
@@ -378,6 +385,8 @@ public class SocketConnectionHandler implements Runnable
                 } catch (InvalidKeyException e) {
                     e.printStackTrace();
                 } catch (GeneralSecurityException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
 
