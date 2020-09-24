@@ -16,13 +16,11 @@ import java.io.ObjectOutputStream;
 import java.io.OptionalDataException;
 import java.io.StreamCorruptedException;
 import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.net.ssl.SSLSocket;
 import java.net.*;
-import java.security.GeneralSecurityException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.Security;
+import java.security.*;
 import java.util.Arrays;
 import java.util.Vector;
 
@@ -321,20 +319,19 @@ public class SocketConnectionHandler implements Runnable
      */
 
     public static byte[] calculateHmac(SecretKey key, byte[] data)throws GeneralSecurityException {
-        Mac hmac = Mac.getInstance("HMacSHA512");
+        Mac hmac = Mac.getInstance("HMacSHA512", "BC");
         hmac.init(key);
         return hmac.doFinal(data);
     }
 
     /**
-     * Verify dwahioaw
+     * Verify the integrity of the message by comparing the sent hash with hashing the message with the same key
      */
 
     public boolean verify (String hashPart, String msgPart, SecretKeySpec serverKey) throws GeneralSecurityException {
         byte[] msgBytes = hexToByteArray(msgPart);
         byte[] newHash = calculateHmac(serverKey, msgBytes);
         byte[] oldHash = hexToByteArray(hashPart);
-
         return Arrays.equals(newHash, oldHash);
     }
 
@@ -359,10 +356,13 @@ public class SocketConnectionHandler implements Runnable
                 final SecretKeySpec SERVER_KEY = new SecretKeySpec(sBytes, "RawBytes");
 
                 try {
-                    Cipher cipher = Cipher.getInstance("AES");
-                    cipher.init(Cipher.DECRYPT_MODE, SERVER_KEY);
+                    Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
                     String hashPart = receivedMessage.substring(receivedMessage.length() - 128);
-                    String msgPart = receivedMessage.substring(0, receivedMessage.length() - 128);
+                    String msgPart = receivedMessage.substring(32, receivedMessage.length() - 128);
+                    String ivPart = receivedMessage.substring(0, 32);
+                    byte[] ivVectorByte = hexToByteArray(ivPart);
+                    IvParameterSpec ivParameterSpec = new IvParameterSpec(ivVectorByte);
+                    cipher.init(Cipher.DECRYPT_MODE, SERVER_KEY, ivParameterSpec);
 
                     if(verify(hashPart, msgPart, SERVER_KEY)) {
 

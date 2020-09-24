@@ -8,34 +8,22 @@ package chatapplication_server.components.ClientSocketEngine;
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.ComponentManager;
 import chatapplication_server.components.ConfigManager;
-import chatapplication_server.components.ServerSocketEngine.SocketServerEngine;
-import chatapplication_server.components.ServerSocketEngine.SocketServerGUI;
 import chatapplication_server.components.base.GenericThreadedComponent;
 import chatapplication_server.exception.ComponentInitException;
 import chatapplication_server.statistics.ServerStatistics;
-import org.bouncycastle.crypto.BlockCipher;
-import org.bouncycastle.crypto.PasswordConverter;
-import org.bouncycastle.crypto.engines.AESEngine;
-import org.bouncycastle.crypto.modes.CBCBlockCipher;
-import org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher;
 
-import java.io.OutputStream;
 import java.security.*;
 //add the provider package
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import javax.crypto.*;
-import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
 import java.net.*;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.KeySpec;
-import java.util.Arrays;
-import java.util.Scanner;
 
 import static chatapplication_server.components.ByteHexHelper.byteArrayToHex;
 import static chatapplication_server.components.ByteHexHelper.convertToBytes;
@@ -162,20 +150,35 @@ public class ClientEngine extends GenericThreadedComponent
     Function for hashing the message
      */
     public static byte[] calculateHmac(SecretKey key, byte[] data)throws GeneralSecurityException{
-        Mac hmac = Mac.getInstance("HMacSHA512");
+        Mac hmac = Mac.getInstance("HMacSHA512", "BC");
         hmac.init(key);
         return hmac.doFinal(data);
     }
 
     /**
-     * Function for apppending hash
+     * Function for apppending hash and Iv vector to msg and converting all three to hex
      */
-    public String appendHashToMsg (byte[] msgCipher, SecretKeySpec serverKey) throws GeneralSecurityException {
+    public String appendHashAndIvToMsg(byte[] msgCipher, SecretKeySpec serverKey, IvParameterSpec IvVector) throws GeneralSecurityException {
         byte[] hash = calculateHmac(serverKey, msgCipher);
+        byte[] ivTobytearray = IvVector.getIV();
         String msgCipherHash = byteArrayToHex(hash);
         String msgCipherHex = byteArrayToHex(msgCipher);
-        return msgCipherHex+msgCipherHash;
+        String msgCipherIv = byteArrayToHex(ivTobytearray);
+        return msgCipherIv+msgCipherHex+msgCipherHash;
     }
+
+    /**
+     * Generating a random IV vector
+     */
+
+    public IvParameterSpec generateIV () {
+        byte[] iv = new byte[16];
+        SecureRandom random = new SecureRandom();
+        random.nextBytes(iv);
+        IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
+        return ivParameterSpec;
+}
+
     /**
      * Method for sending a message to the server
      * 
@@ -190,12 +193,13 @@ public class ClientEngine extends GenericThreadedComponent
         byte[] sBytes = new byte[]{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
         final SecretKeySpec SERVER_KEY = new SecretKeySpec(sBytes, "RawBytes");
         try {
-            Cipher cipher = Cipher.getInstance("AES");
-            cipher.init(Cipher.ENCRYPT_MODE, SERVER_KEY);
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            IvParameterSpec ivParameterSpec = generateIV();
+            cipher.init(Cipher.ENCRYPT_MODE, SERVER_KEY, ivParameterSpec);
             byte[] msgBytes = convertToBytes(msg);
             byte[] msgCipher = cipher.doFinal(msgBytes);
 
-            socketWriter.writeObject(appendHashToMsg(msgCipher, SERVER_KEY));
+            socketWriter.writeObject(appendHashAndIvToMsg(msgCipher, SERVER_KEY, ivParameterSpec));
         }
         catch( IOException e ) 
         {
